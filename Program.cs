@@ -65,6 +65,8 @@ namespace Delaunay2D
                     if (debug)
                     {
                         Console.WriteLine($"Testing edge from {currentQE.Location} to {currentQE.Dest()}");
+                        // Can end up in a circular loop if the point is outside the original bounding triangle
+                        // Would be easier to do this if we just created a bounding square..
                         if (testedEdges.Any(item => item == currentQE))
                         {
                             throw new InvalidOperationException("Trapped in circular logic loop");
@@ -101,22 +103,18 @@ namespace Delaunay2D
                 }
 
                 // Triangle has been found!
-                //QuarterEdge newSpoke = QuarterEdge.InsertPoint(currentQE,point);
-                currentQE = QuarterEdge.InsertPoint(currentQE,point);
+                QuarterEdge spoke = QuarterEdge.InsertPoint(currentQE,point);
+
+                // Now the hard part - the actual Delaunay..ing
+                // Traverse the ring of points around the new point, and check to see if they need to flip
             }
 
-            List<QuarterEdge> edges = [];
             // Use a recursive pattern to get all the edges,
             // starting from the last one created (the only
             // we can have total confidence still exists
+            List<QuarterEdge> edges = [];
             TraverseMesh(currentQE,edges);
             Plotting.PlotMesh(edges);
-            /*
-            foreach (QuarterEdge edge in edges)
-            {
-                Console.WriteLine(edge);
-            }
-            */
         }
 
         public static void TraverseMesh(QuarterEdge edge, List<QuarterEdge> edgeList)
