@@ -14,7 +14,7 @@ namespace Delaunay2D
             bool debug = true;
 
             // Generate vector of points
-            int nPoints = 100;
+            int nPoints = 4;
             Vector2[] points = new Vector2[nPoints];
             System.Random rng;
 
@@ -47,6 +47,8 @@ namespace Delaunay2D
             Vector2 lowerRightBound = new(xyPad + (float)(xMax + xSpan/2.0),-xyPad + (float)yMin);
             Vector2 upperBound = new((float)(xMin + xSpan/2.0),xyPad + (float)(yMax + ySpan/2.0));
             QuarterEdge firstQE = QuarterEdge.CreateTriangle(lowerLeftBound,lowerRightBound,upperBound);
+            Vector2[] boundaryVertices = [lowerLeftBound,lowerRightBound,upperBound];
+            QuarterEdge[] boundaryEdges = [firstQE,firstQE.LNext(),firstQE.LNext().LNext()];
 
             // Start adding points...
             QuarterEdge currentQE = firstQE;
@@ -57,6 +59,7 @@ namespace Delaunay2D
                 Vector2[] triangle = new Vector2[3];
                 // For debugging
                 List<QuarterEdge> testedEdges = [];
+                // TODO: Need to add logic for a colinear point
                 bool triangleFound = false;
                 QuarterEdge qe1, qe2, qe3;
                 while (!triangleFound)
@@ -107,6 +110,86 @@ namespace Delaunay2D
 
                 // Now the hard part - the actual Delaunay..ing
                 // Traverse the ring of points around the new point, and check to see if they need to flip
+                // Remember: we defined triangles as being on the left of a given edge (for the purposes of
+                // determining which triangle we were inserting into).
+                bool doFlips = true;
+                if (doFlips)
+                {
+                    QuarterEdge firstEdge = currentQE;
+                    do{
+                        // Check if we need to flip
+                        Vector2 A = currentQE.Location;
+                        Vector2 B = currentQE.Dest();
+                        Vector2 C = currentQE.Next().Dest();
+                        Vector2 D = currentQE.Prev().Dest();
+
+                        // Never flip a boundary edge
+                        bool boundaryEdge = boundaryEdges.Contains(currentQE) || boundaryEdges.Contains(currentQE.Sym());
+                        bool flip = !boundaryEdge;
+                        Console.WriteLine($"Passed boundary edge test: {flip}");
+                        if (flip)
+                        {
+                            // Only flip if this will not cause an inside-out triangle (?)
+                            bool boundaryA = boundaryVertices.Contains(A);
+                            // Cannot both be boundary vertices (as already checked for a boundary edge)
+                            bool boundaryB = (!boundaryA) && boundaryVertices.Contains(B);
+                            bool boundaryVertex = boundaryA || boundaryB;
+                            // This needs fixing
+                            if (boundaryA)
+                            {
+                                // Use the triangle defined by the boundary vertex and the two points which the
+                                // flip would move things to
+                                triangle = [A, currentQE.Next().Dest(), currentQE.Prev().Dest()];
+                            }
+                            if (boundaryB)
+                            {
+                                triangle = [B, currentQE.Sym().Next().Dest(), currentQE.Sym().Prev().Dest()];
+                            }
+                            flip = (boundaryVertex && 
+                                    IsTriangleOrientedAreaNegative([triangle[0],triangle[1],point]) && 
+                                    IsTriangleOrientedAreaNegative([triangle[1],triangle[2],point]) && 
+                                    IsTriangleOrientedAreaNegative([triangle[2],triangle[0],point]));
+                            Console.WriteLine($"Passed inside-out triangle test: {flip} [{boundaryA}/{boundaryB}]");
+                        }
+                        // Hardest check - do not flip if the edge is separating the newly-inserted point from a boundary vertex
+                        if (flip)
+                        {
+                            // Figure out which two vertices the flipped edge will connect to
+                            // If these are a boundary vertex and the inserted point, don't do it!
+                            Vector2 testVtxA = currentQE.Prev().Dest();
+                            Vector2 testVtxB = currentQE.Sym().Prev().Dest();
+                            flip = !((boundaryVertices.Contains(testVtxA) && (testVtxB == point)) || 
+                                    (boundaryVertices.Contains(testVtxB) && (testVtxA == point)));
+                            Console.WriteLine($"Passed boundary vertex test: {flip}");
+                        }
+                        // Final check - whether or not we actually do want to flip!
+                        if (flip)
+                        {
+                            flip = IsPointInCircle([A,C,B],D) || IsPointInCircle([A,B,D],C);
+                            Console.WriteLine($"Passed point in circle test: {flip}");
+                        }
+                        if (flip)
+                        {
+                            // Store the edge that will become the next one after the flip is complete
+                            QuarterEdge nextQE = currentQE.Sym().Next();
+                            // Do the flip!
+                            Console.WriteLine(currentQE);
+                            currentQE.Flip();
+                            Console.WriteLine(currentQE);
+                            // Reverse to the previous member (ring has expanded)
+                            //currentQE = currentQE.Prev();
+                            currentQE = nextQE;
+                            Console.WriteLine(currentQE);
+                        }
+                        else
+                        {
+                            // Advance to the next member of the ring
+                            // Flip the edge so that the new point is still
+                            // left of the current edge
+                            currentQE = currentQE.LNext().LNext().Sym();
+                        }
+                    } while (firstEdge != currentQE);
+                }
             }
 
             // Use a recursive pattern to get all the edges,
@@ -114,6 +197,7 @@ namespace Delaunay2D
             // we can have total confidence still exists
             List<QuarterEdge> edges = [];
             TraverseMesh(currentQE,edges);
+            //Plotting.PlotMesh(edges,boundaryVertices);
             Plotting.PlotMesh(edges);
         }
 
